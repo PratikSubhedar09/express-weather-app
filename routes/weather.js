@@ -1,5 +1,6 @@
 var express = require('express');
 var OAuth = require('oauth');
+var async = require('async');
 require('dotenv').config()
 
 var router = express.Router();
@@ -20,24 +21,48 @@ var request = new OAuth.OAuth(
     header
 );
 
-/* GET users listing. */
-router.get('/', function(req, res, next) {
+router.get('/', async function(req, res, next) {
   const location = req.query.location;
-  if (location) {
-    return request.get(
+  if (location && typeof location === 'string') {
+    const weatherData = await getLocationWeatherAsync(location).catch((err) => {
+      res.status(400).send(err);
+    })
+    return res.send(weatherData);
+  }
+  if (location && typeof location === 'object') {
+    const weatherData = await async.map(location, (loc, cb) => {
+      getLocationWeatherAsync(loc)
+        .then((data) => {
+          cb(null, data);
+        })
+        .catch((err) => {
+          cb(err);
+        })
+    }).catch((err) => {
+      res.status(400).send(err);
+    })
+    
+    return res.send(weatherData);
+  }
+  res.send('Make a request with the name of a city to get the weather for that location');
+});
+
+function getLocationWeatherAsync(location) {
+  return new Promise(function(resolve, reject) {
+    request.get(
       `${process.env.WEATHER_API_URL}?format=json&location=${location}`,
       null,
       null,
       function (err, data, result) {
         if (err) {
-          return res.send(err);
+          reject(err);
+        } else {
+          const weatherData = JSON.parse(data)
+          resolve(weatherData);
         }
-        const weatherData = JSON.parse(data)
-        res.send(weatherData);
       }
     );
-  }
-  res.send('Make a request with the name of a city to get the weather for that location');
-});
+  })
+}
 
 module.exports = router;
